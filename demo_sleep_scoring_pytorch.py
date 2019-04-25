@@ -15,7 +15,9 @@ from joblib import Memory
 ##############################################################################
 # Define code to get epochs for all subjects
 
-subjects = [0, 1]
+# subjects = [0, 1]
+subjects = range(20)
+n_groups = 5  # keep 5 subjects out
 files = fetch_data(subjects=subjects, recording=[1])
 
 mapping = {'EOG horizontal': 'eog',
@@ -172,10 +174,10 @@ all_datasets = \
 dataset = ConcatDataset(all_datasets)
 groups = dataset.get_groups()
 
-ds_train, ds_valid = train_test_split(dataset, n_groups=1)
+ds_train, ds_valid = train_test_split(dataset, n_groups=n_groups)
 
 batch_size_train = 10
-batch_size_valid = len(ds_valid)
+batch_size_valid = 64
 sampler_train = RandomSampler(ds_train)
 sampler_valid = SequentialSampler(ds_valid)
 
@@ -256,8 +258,10 @@ class SleepScoringModel(nn.Module):
 
         return x
 
+device = 'cuda'
 model = SleepScoringModel(spatial_dim=epochs_data.shape[1],
-                          time_dim=epochs_data.shape[2])
+                          time_dim=epochs_data.shape[2],
+			  device=device)
 
 # Test model works:
 n_samples_test = 10
@@ -321,7 +325,7 @@ def _validate(model, loader, criterion):
                     np.mean(val_loss[:idx_batch + 1])))
 
     accuracy = accuracy / len(loader)
-    print("---  Accuracy : %s" % accuracy.view(1))
+    print("---  Accuracy : %s" % accuracy.item())
     return np.mean(val_loss)
 
 
