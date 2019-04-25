@@ -261,7 +261,7 @@ class SleepScoringModel(nn.Module):
 device = 'cuda'
 model = SleepScoringModel(spatial_dim=epochs_data.shape[1],
                           time_dim=epochs_data.shape[2],
-			  device=device)
+                          device=device)
 
 # Test model works:
 n_samples_test = 10
