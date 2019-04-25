@@ -24,7 +24,7 @@ mapping = {'EOG horizontal': 'eog',
            'Temp rectal': 'misc',
            'Event marker': 'misc'}
 
-mem = Memory('.')
+mem = Memory(mne.get_config('MNE_DATA'))
 
 
 @mem.cache
