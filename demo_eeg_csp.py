@@ -1,6 +1,7 @@
-# Authors: Martin Billinger <martin.billinger@tugraz.at>
+# Authors: Alexandre Gramfort <alexandre.gramfort@inria.fr>
+#          Jean-Rémi KING <jeanremi.king@gmail.com>
 #
-# License: BSD (3-clause)
+# License: BSD Style.
 
 from sklearn.model_selection import ShuffleSplit
 
@@ -64,12 +65,28 @@ cv = ShuffleSplit(10, test_size=0.2, random_state=42)
 cv_split = cv.split(epochs_data)
 train_idx, test_idx = next(cv_split)
 
-dataset = EpochsDataset(epochs_data, labels)
+
+def scale(X):
+    """Standard scaling of data along the last dimention.
+
+    Parameters
+    ----------
+    X : array, shape (n_channels, n_times)
+        The input signals.
+
+    Returns
+    -------
+    X_t : array, shape (n_channels, n_times)
+        The scaled signals.
+    """
+    return X / 2e-5
+
+dataset = EpochsDataset(epochs_data, labels, transform=scale)
 
 ds_train, ds_valid = Subset(dataset, train_idx), Subset(dataset, test_idx)
 
-batch_size_train = 10
-batch_size_valid = 64
+batch_size_train = len(ds_train)
+batch_size_valid = len(ds_valid)
 sampler_train = RandomSampler(ds_train)
 sampler_valid = SequentialSampler(ds_valid)
 
@@ -95,22 +112,18 @@ class CommonSpatialFilterModel(nn.Module):
         Number of channels
     n_components : int
         The number of spatial filters.
-    device : 'cpu' | 'cuda'
-        The device to use for training and inference.
     """
-    def __init__(self, spatial_dim, n_components=5, device="cpu"):
+    def __init__(self, spatial_dim, n_components=5):
         super().__init__()
         self.spatial_dim = spatial_dim
         self.n_components = n_components
-        self.device = device
 
         # define model architecture
         self.spatial_filtering = nn.Conv2d(
             1, self.n_components, (self.spatial_dim, 1), bias=False)
 
         self.classifier = nn.Sequential(
-            # nn.Dropout(0.25),
-            nn.Linear(n_components, 5)
+            nn.Linear(n_components, 2),
         )
 
     def forward(self, x):
@@ -124,9 +137,9 @@ class CommonSpatialFilterModel(nn.Module):
 
 # device = 'cuda'
 device = 'cpu'
+n_components = 30
 model = CommonSpatialFilterModel(spatial_dim=epochs_data.shape[1],
-                                 n_components=2,
-                                 device=device)
+                                 n_components=n_components)
 
 # Test model works:
 n_samples_test = 10
@@ -142,10 +155,11 @@ _, top_class = y_pred.topk(1, dim=1)
 from common import train  # noqa
 
 lr = 1e-3
-n_epochs = 10
-patience = 5
+n_epochs = 300
+patience = 100
 
-# optimizer = optim.Adam(model.parameters(), lr=lr)
-optimizer = optim.ASGD(model.parameters(), lr=lr)
+model.to(device=device)  # move to device before creating the optimizer
+optimizer = optim.SGD(model.parameters(), lr=lr, momentum=0.9,
+                      weight_decay=1e-4)
 
-train(model, loader_train, loader_valid, optimizer, n_epochs, patience)
+train(model, loader_train, loader_valid, optimizer, n_epochs, patience, device)

@@ -63,29 +63,29 @@ class EpochsDataset(Dataset):
         return X, y
 
 
-def _do_train(model, loader, optimizer, criterion):
+def _do_train(model, loader, optimizer, criterion, device):
     # training loop
     model.train()
     pbar = tqdm(loader)
     train_loss = np.zeros(len(loader))
     for idx_batch, (batch_x, batch_y) in enumerate(pbar):
         optimizer.zero_grad()
-        batch_x = batch_x.float().to(model.device)
-        batch_y = batch_y.long().to(model.device)
+        batch_x = batch_x.to(device=device, dtype=torch.float32)
+        batch_y = batch_y.to(device=device, dtype=torch.int64)
 
-        output = model.forward(batch_x)
+        output = model(batch_x)
         loss = criterion(output, batch_y)
 
         loss.backward()
         optimizer.step()
 
-        train_loss[idx_batch] = loss
+        train_loss[idx_batch] = loss.item()
         pbar.set_description(
             desc="avg train loss: {:.4f}".format(
                 np.mean(train_loss[:idx_batch + 1])))
 
 
-def _validate(model, loader, criterion):
+def _validate(model, loader, criterion, device):
     # validation loop
     pbar = tqdm(loader)
     val_loss = np.zeros(len(loader))
@@ -94,27 +94,30 @@ def _validate(model, loader, criterion):
         model.eval()
 
         for idx_batch, (batch_x, batch_y) in enumerate(pbar):
-            batch_x = batch_x.float().to(model.device)
-            batch_y = batch_y.long().to(model.device)
+            batch_x = batch_x.to(device=device, dtype=torch.float32)
+            batch_y = batch_y.to(device=device, dtype=torch.int64)
             output = model.forward(batch_x)
 
             loss = criterion(output, batch_y)
-            val_loss[idx_batch] = loss
+            val_loss[idx_batch] = loss.item()
 
             _, top_class = output.topk(1, dim=1)
+            top_class = top_class.flatten()
+            # print(top_class.shape, batch_y.shape)
             accuracy += \
-                torch.mean((batch_y == top_class).type(torch.FloatTensor))
+                torch.sum((batch_y == top_class).to(torch.float32))
 
             pbar.set_description(
                 desc="avg val loss: {:.4f}".format(
                     np.mean(val_loss[:idx_batch + 1])))
 
-    accuracy = accuracy / len(loader)
+    accuracy = accuracy / len(loader.dataset)
     print("---  Accuracy : %s" % accuracy.item(), "\n")
     return np.mean(val_loss)
 
 
-def train(model, loader_train, loader_valid, optimizer, n_epochs, patience):
+def train(model, loader_train, loader_valid, optimizer, n_epochs, patience,
+          device):
     """Training function
 
     Parameters
@@ -143,8 +146,8 @@ def train(model, loader_train, loader_valid, optimizer, n_epochs, patience):
         dataset.
     """
     # put model on cuda if not already
-    if model.device == "cuda":
-        model.to(torch.device(model.device))
+    device = torch.device(device)
+    # model.to(device)
 
     # define criterion
     criterion = F.nll_loss
@@ -155,8 +158,8 @@ def train(model, loader_train, loader_valid, optimizer, n_epochs, patience):
 
     for epoch in range(n_epochs):
         print("\nStarting epoch {} / {}".format(epoch + 1, n_epochs))
-        _do_train(model, loader_train, optimizer, criterion)
-        val_loss = _validate(model, loader_valid, criterion)
+        _do_train(model, loader_train, optimizer, criterion, device)
+        val_loss = _validate(model, loader_valid, criterion, device)
 
         # model saving
         if np.mean(val_loss) < best_val_loss:
