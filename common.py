@@ -138,6 +138,8 @@ def train(model, loader_train, loader_valid, optimizer, n_epochs, patience,
     patience : int
         The patience parameter, i.e. how long to wait for the
         validation error to go down.
+    device : str | instance of torch.device
+        The device to train the model on.
 
     Returns
     -------

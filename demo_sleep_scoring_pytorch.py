@@ -6,6 +6,7 @@
 # License: BSD Style.
 
 import os
+from collections import Counter
 import numpy as np
 import mne
 from mne.datasets.sleep_physionet.age import fetch_data
@@ -14,9 +15,14 @@ from joblib import Memory
 ##############################################################################
 # Define code to get epochs for all subjects
 
-# subjects = [0, 1]
-subjects = range(20)
-n_groups = 5  # keep 5 subjects out
+subjects = [0, 1]
+n_groups = 1  # keep 1 subject out
+device = 'cpu'
+
+# subjects = range(20)
+# n_groups = 5  # keep 5 subjects out
+# device = 'cuda'
+
 files = fetch_data(subjects=subjects, recording=[1])
 
 mapping = {'EOG horizontal': 'eog',
@@ -71,8 +77,9 @@ import torch.nn.functional as F  # noqa
 import torch.optim as optim  # noqa
 from torch.utils.data import Dataset, DataLoader  # noqa
 from torch.utils.data import Subset  # noqa
-from torch.utils.data import RandomSampler  # noqa
+# from torch.utils.data import RandomSampler  # noqa
 from torch.utils.data import SequentialSampler  # noqa
+from torch.utils.data import WeightedRandomSampler  # noqa
 from torch.utils.data.sampler import BatchSampler  # noqa
 
 from sklearn import model_selection  # noqa
@@ -128,9 +135,26 @@ groups = dataset.get_groups()
 
 ds_train, ds_valid = train_test_split(dataset, n_groups=n_groups)
 
+
+def get_weights(ds):
+    """Do one pass on dataset to get weights"""
+    y = np.empty(len(ds), dtype=int)
+    for idx in range(len(ds)):
+        y[idx] = ds[idx][1]
+    weights = np.empty(len(y))
+    counts = Counter(y)
+    for this_y, this_count in counts.items():
+        weights[y == this_y] = 1. / this_count
+    return weights
+
+
+weights_train = get_weights(ds_train)
+
 batch_size_train = 10
 batch_size_valid = 64
-sampler_train = RandomSampler(ds_train)
+# sampler_train = RandomSampler(ds_train)
+
+sampler_train = WeightedRandomSampler(weights_train, len(ds_train))
 sampler_valid = SequentialSampler(ds_valid)
 
 # create loaders
@@ -167,11 +191,10 @@ class SleepScoringModel(nn.Module):
     device : 'cpu' | 'cuda'
         The device to use for training and inference.
     """
-    def __init__(self, spatial_dim=1, time_dim=3840, device="cpu"):
+    def __init__(self, spatial_dim=1, time_dim=3840):
         super().__init__()
         self.spatial_dim = spatial_dim
         self.time_dim = time_dim
-        self.device = device
 
         assert time_dim <= 3840
         time_pad_size = (3840 - time_dim)  # get padding if necessary
@@ -210,10 +233,8 @@ class SleepScoringModel(nn.Module):
 
         return x
 
-device = 'cuda'
 model = SleepScoringModel(spatial_dim=epochs_data.shape[1],
-                          time_dim=epochs_data.shape[2],
-                          device=device)
+                          time_dim=epochs_data.shape[2])
 
 # Test model works:
 n_samples_test = 10
@@ -234,4 +255,4 @@ patience = 5
 
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
-train(model, loader_train, loader_valid, optimizer, n_epochs, patience)
+train(model, loader_train, loader_valid, optimizer, n_epochs, patience, device)
