@@ -19,9 +19,9 @@ subjects = [0, 1]
 n_groups = 1  # keep 1 subject out
 device = 'cpu'
 
-# subjects = range(20)
-# n_groups = 5  # keep 5 subjects out
-# device = 'cuda'
+subjects = range(20)
+n_groups = 5  # keep 5 subjects out
+device = 'cuda'
 
 files = fetch_data(subjects=subjects, recording=[1])
 
@@ -149,6 +149,7 @@ def get_weights(ds):
 
 
 weights_train = get_weights(ds_train)
+weights_train = torch.as_tensor(weights_train).to(device)
 
 batch_size_train = 10
 batch_size_valid = 64
@@ -253,6 +254,7 @@ lr = 1e-3
 n_epochs = 10
 patience = 5
 
+model.to(device)
 optimizer = optim.Adam(model.parameters(), lr=lr)
 
 train(model, loader_train, loader_valid, optimizer, n_epochs, patience, device)
